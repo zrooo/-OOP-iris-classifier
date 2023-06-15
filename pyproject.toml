@@ -1,9 +1,9 @@
 [project]
-name = "iris-classifier"
+name = "[OOP] iris-classifier"
 version = "0.0.1"
 description = ""
 readme = "README.md"
 require-python = ">3.8"
 [[project.authors]]
-email = "unerue@me.com"
-name = "Kyung-Su Kang"
+email = "kdyfutu@naver.com"
+name = "Da-Young Kim"

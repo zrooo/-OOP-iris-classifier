@@ -1,22 +1,15 @@
-from __future__ import annotations
-import collections
-import csv
+import abc
+import math
+import random
 import datetime
-import enum
-from math import isclose
-from pathlib import Path
+import collections
+import collections.abc
 from typing import (
-    cast,
-    Any,
-    Optional,
-    Union,
-    Iterator,
-    Iterable,
-    Counter,
-    Callable,
-    Protocol,
+    Optional, Iterable, Union, Counter, 
+    TypedDict, List, overload, Tuple
 )
-import weakref
+
+from src.model import Sample
 
 
 class Sample:
@@ -104,6 +97,8 @@ class KnownSample(Sample):
             return self._classification
         else:
             raise AttributeError(f"Training samples have no classification")
+
+
 
     @classification.setter
     def classification(self, value: str) -> None:
@@ -365,7 +360,9 @@ class TrainingData:
 
     def classify(self, parameter: Hyperparameter, sample: UnknownSample) -> str:
         return parameter.classify(sample)
-
+    
+class TrainingKnownSample():
+    ...
 
 class BadSampleRow(ValueError):
     pass
@@ -396,6 +393,144 @@ class SampleReader:
                     raise BadSampleRow(f"Invalid {row!r}") from ex
                 yield sample
 
+class TestingKnownSample():
+    ...
+    
+
+class SampleDict(TypedDict):
+    sepal_length: float
+    sepal_width: float
+    petal_length: float
+    petal_width: float
+    species: str
+
+class SamplePartition(List[SampleDict], abc.ABC): #추상클래스로 선언/ 리스트를 상속받음
+    @overload
+    def __init__(self, *, training_subsset: float = 0.80) -> None:   # *은 파티션 역할
+        ...
+
+    @overload
+    def __init__(
+            self, 
+            iterable: Optional[Iterable[SampleDict]] = None,
+            *,
+            training_subset: float = 0.80
+    )-> None:
+            ...
+
+    def __init__(
+            self, 
+            iterable: Optional[Iterable[SampleDict]] = None,
+            *,
+            training_subset: float = 0.80
+    ) -> None:
+        self.training_subset = training_subset
+        if iterable:
+                super().__init__(iterable)
+        else:
+                super().__init__()
+#overloading 왜 같은 걸 여러개 만드는가->데이터타입마다작동이달라짐
+
+    @abc.abstractproperty
+    @property
+    def training(self) -> list[TrainingKnownSample]:
+            ...
+            
+    @abc.abstractproperty           
+    @property
+    def testing(self) -> list[TestingKnownSample]:
+            ...
+#추상 클래스 다른 개발자들이 사용할 때 지켜야 하는 최소한의 틀? 구현을 해놓진 않는다~
+
+class ShufflingSamplePartition(SamplePartition):  #샘플파티션을 상속받음 올라가보면 샘플파티션은 리스트를 상속받았으므로?
+#데이터의 인덱스를 셔플링. 항상 새롭게 순서를 바꿔 주는 클래스
+    def __init__(
+        self,
+        iterable: Optional[Iterable[SampleDict]] = None,
+        *,
+        training_subset: float = 0.80  #부분집합은 80퍼센트만 가져갈게
+    ) -> None:
+        super().__init__(iterable, training_subset)
+        self.split: Optional[int] = None
+
+    @property
+    def training(self) -> list[TrainingKnownSample]:
+        self.shuffle()
+        return [TrainingKnownSample(**sd) for sd in self[:self.split]]  #**sd: unpack
+ 
+    @property  
+    def testing(self) -> list[TestingKnownSample]:
+        ...
+
+    def shuffle(self) -> None:
+        if not self.split:
+            random.shuffle(self)
+            self.split = int(len(self) * self.training_subset)  #int는 천장함수 아니고 바닥함수
+
+class DealingPartition(abc.ABC):
+    def __init__(
+        self, 
+        items: Optional[Iterable[SampleDict]],
+        #/, 왼쪽, 파이썬의 파티션 구현은 두 가지argument냐 keywordargument냐에 따라 다르게 파티션 구분
+        *, #오른쪽
+        training_subset: Tuple[int, int] = (8, 10)
+    ) -> None:
+        ...
+
+    @abc.abstractproperty
+    @property
+    def training(self) -> List[TrainingKnownSample]:
+        ...
+
+    @abc.abstractproperty
+    @property
+    def testing(self) -> List[TestingKnownSample]:
+        ...
+
+    @abc.abstractmethod
+    def extend(self, items: Iterable[SampleDict]) -> None:
+        ...
+
+    @abc.abstractmethod
+    def append(self, item: SampleDict) -> None:
+        ...
+#extend append 차이: 하나와 여러개 입력
+
+class CountingDealingPartition(DealingPartition):
+    def __init__(   
+            self,
+            items: Iterable[SampleDict], 
+            *,
+            traing_subset: Tuple[int, int] = (8, 10)
+    ) -> None:
+        self.traing_subset = training_subset
+        self.counter = 0
+        self._training: list[TrainingKnownSample] = []
+        self._testing: list[TestingKnownSample] = [] #파이썬 앞에서 언더바가 붙으면 이 객체 안에서만 사용되는 특성
+        if items:
+            self.extend(items)
+
+    def extend(self, items: Iterable[SampleDict]) -> None:
+        for item in items:
+            self.append(item)
+
+    def append(self, item: SampleDict) -> None:
+        n, d = self.training_subset
+        if self.counter % d < n:
+            self._training.append(TrainingKnownSample(**item))
+        else:
+            self._testing.append(TestingKnownSample(**item)) #언팩
+        self.counter += 1
+
+    @property
+    def training(self) -> list[TrainingKnownSample]:
+        return self._training
+    
+    @property
+    def testing(self) -> list[TestingKnownSample]:
+        return self._testing
+
+    
 
 # Special case, we don't *often* test abstract superclasses.
 # In this example, however, we can create instances of the abstract class.
