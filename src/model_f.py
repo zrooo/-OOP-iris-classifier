@@ -1,3 +1,5 @@
+#Hyperparameter 클래스에 frozen 속성을 추가
+
 from __future__ import annotations
 import collections
 from dataclasses import dataclass, asdict

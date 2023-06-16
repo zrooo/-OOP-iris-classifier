@@ -1,3 +1,6 @@
+'''model_t.py와의 차이점
+Hypereparameter 클래스를 class 키워드가 아닌 dataclass 데코레이터를 사용하여 클래스 생성'''
+
 from __future__ import annotations
 import collections
 from dataclasses import dataclass, asdict
